@@ -52,6 +52,8 @@ parser.add_argument('--val_batch_size', metavar='SIZE', type=int, default=2, hel
 parser.add_argument('--val_batch_count', metavar='N', type=int, default=40, help='Number of batches for validation.')
 parser.add_argument('--val_every', metavar='STEPS', type=int, default=0, help='Calculate validation loss every STEPS steps.')
 
+parser.add_argument('--max-steps', metavar='STEPS', type=int, default=0, help='Number of steps to train, 0 for no limit')
+parser.add_argument('--train-until', metavar='AVG', type=float, default=0, help='Train model until avg loss is <= AVG, 0 for no limit')
 
 def maketree(path):
     try:
@@ -88,6 +90,7 @@ def main():
     config = tf.compat.v1.ConfigProto()
     config.gpu_options.allow_growth = True
     config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
+
     with tf.compat.v1.Session(config=config) as sess:
         context = tf.compat.v1.placeholder(tf.int32, [args.batch_size, None])
         context_in = randomize(context, hparams, args.noise)
@@ -103,7 +106,6 @@ def main():
                 input_tensor=tf.nn.sparse_softmax_cross_entropy_with_logits(
                     labels=val_context[:, 1:], logits=val_output['logits'][:, :-1]))
             val_loss_summary = tf.compat.v1.summary.scalar('val_loss', val_loss)
-
 
         tf_sample = sample.sample_sequence(
             hparams=hparams,
@@ -288,6 +290,17 @@ def main():
                         avg=avg_loss[0] / avg_loss[1]))
 
                 counter += 1
+
+                if args.max_steps > 0 and count >= args.max_steps:
+                    print('Reached max steps.  Terminating.')
+                    save()
+                    break
+                
+                if args.train_until > 0 and avg_loss <= args.avg_loss:
+                    print('Reached training goal.  Terminating')
+                    save()
+                    break
+                
         except KeyboardInterrupt:
             print('interrupted')
             save()
